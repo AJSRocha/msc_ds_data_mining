@@ -1,0 +1,71 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(wordcloud)
+library(text2vec)
+library(tm)
+```
+
+```{r data_import}
+Sys.getlocale()
+
+readr::guess_encoding('FN-Dataset-18k//FN-Dataset-18k.csv')
+df = read.csv('FN-Dataset-18k//FN-Dataset-18k.csv',encoding = 'UTF-8')
+
+```
+
+13 diferenças entre titulo e descriçao
+
+```{r}
+sum(df$title == df$description)
+```
+
+```{r}
+df %>% 
+  filter(title != description) %>% 
+  View
+```
+
+```{r}
+
+```
+
+
+```{r}
+corpus = Corpus(VectorSource(df$description))
+
+inspect(corpus[[1]])
+
+corpus[[437]]$content
+
+dtm = DocumentTermMatrix(corpus)
+```
+
+```{r}
+nDocs(dtm)
+nTerms(dtm)
+Terms(dtm)
+inspect(dtm)
+
+dtm.bin = weightBin(dtm)
+inspect(dtm.bin)
+
+dtm.tfidf = weightTfIdf(dtm)
+inspect(dtm.tfidf)
+
+```
+
+```{r}
+
+```
+
+
+
+
+
+
