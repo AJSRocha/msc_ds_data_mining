@@ -1,6 +1,6 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output: github_document
 ---
 
 ```{r}
@@ -9,58 +9,159 @@ library(ggplot2)
 library(wordcloud)
 library(text2vec)
 library(tm)
+library(quanteda)
+##
+library(caret)
 ```
 
 ```{r data_import}
 Sys.getlocale()
 
 readr::guess_encoding('FN-Dataset-18k//FN-Dataset-18k.csv')
-df = read.csv('FN-Dataset-18k//FN-Dataset-18k.csv',encoding = 'UTF-8')
+df = read.csv('FN-Dataset-18k//FN-Dataset-18k.csv',encoding = 'UTF-8') %>% 
+  mutate(y = factor(questionable_domain))
 
 ```
 
-13 diferenças entre titulo e descriçao
-
-```{r}
-sum(df$title == df$description)
-```
+# EDA
 
 ```{r}
 df %>% 
   filter(title != description) %>% 
   View
+
+sum(df$title == df$description)
+```
+
+
+
+```{r}
+
+temp = cbind(df, convert(res, to = 'data.frame'))
+summary(temp$trump)
+
+temp %>% ggplot() + 
+  geom_bar(aes(x = questionable_domain, fill = trump != 0)) + 
+  theme_light()
+
+```
+
+
+# Tokenizing
+
+```{r}
+
+corpus = quanteda::corpus(df$description)
+tweets_tokens = quanteda::tokens(corpus,
+                        remove_punct = TRUE,
+                        split_hyphens = TRUE)
+
+tweets_clean = tokens_wordstem(tweets_tokens) %>%
+  dfm(., tolower = TRUE) %>% 
+  dfm_remove(., stopwords("english"))
+
+tweets_clean = tweets_clean[,order(featnames(tweets_clean))]
+
+dfm = dfm(tweets_clean)
 ```
 
 ```{r}
 
+topfeatures(dfm)
+```
+# Transform tweets into features
+
+```{r}
+featurizer = function(token, data){
+  res = dfm_select(dfm, pattern = token)
+  res = convert(res, to = 'data.frame')
+  res = ifelse(res[,token] > 0, 1, 0) 
+  res = cbind(data, res)
+  names(res)[length(names(res))] = token
+  return(res)
+  }
+```
+
+## Some tokens:
+
+```{r}
+df_ex = featurizer('@gop', df) %>% 
+  featurizer('biden',.) %>% 
+    featurizer('trump',.) 
+
+
 ```
 
 
+# Test - Train split
+
 ```{r}
-corpus = Corpus(VectorSource(df$description))
+index = caret::createDataPartition(df$questionable_domain, p = 0.2, list = F)
+train = df_ex[index,]
+test = df_ex[-index,]
 
-inspect(corpus[[1]])
+modelo = as.formula(y ~ `@gop` + biden + trump)
 
-corpus[[437]]$content
+grelha <- expand.grid(mtry = c(1,2,5,10,20,30,40,50))
 
-dtm = DocumentTermMatrix(corpus)
+# corremos a simulação
+model_rf = caret::train(modelo,
+                     method="rf",
+                     data=train,
+                     #trControl=control,
+                     #tuneGrid=grelha,
+                     #preProc=c("BoxCox"),
+                     ntree=500,
+                     metric="Accuracy")
+
+
+
+print(forest)
+forest$finalModel
+forest$results
+
 ```
 
+## SVM
+
 ```{r}
-nDocs(dtm)
-nTerms(dtm)
-Terms(dtm)
-inspect(dtm)
 
-dtm.bin = weightBin(dtm)
-inspect(dtm.bin)
+model_svm =
+train(modelo,
+      data = train,
+      method = "svmLinear")
 
-dtm.tfidf = weightTfIdf(dtm)
-inspect(dtm.tfidf)
-
+model_svm$finalModel
+model_svm$pred
+print(model_svm)
 ```
 
+
+# PREDICT NEW TWEETS
+
 ```{r}
+# create dummy tweets
+dummy = df[3,]
+
+# pre-processing function
+conversor = function(new){
+  temp = quanteda::corpus(new$description)
+  tokens = quanteda::tokens(temp,
+                        remove_punct = TRUE,
+                        split_hyphens = TRUE)
+  # builds output
+  predictable = new %>% 
+    mutate(`@gop` = ifelse('@gop' %in% tokens, 1,0),
+           biden = ifelse('biden' %in% tokens, 1,0),
+           trump = ifelse('trump' %in% tokens, 1,0))
+  
+  output = predict(model_svm, newdata = predictable)
+  
+  return(output)
+}
+
+
+conversor(dummy)
 
 ```
 
