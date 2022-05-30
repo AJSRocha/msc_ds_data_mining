@@ -9,9 +9,12 @@ library(ggplot2)
 library(wordcloud)
 library(text2vec)
 library(tm)
+##
 library(quanteda)
+library(quanteda.textplots)
 ##
 library(caret)
+library(MLeval)
 ```
 
 ```{r data_import}
@@ -33,7 +36,7 @@ df %>%
 sum(df$title == df$description)
 ```
 
-
+# Silly plots
 
 ```{r}
 
@@ -46,11 +49,9 @@ temp %>% ggplot() +
 
 ```
 
-
 # Tokenizing
 
 ```{r}
-
 corpus = quanteda::corpus(df$description)
 tweets_tokens = quanteda::tokens(corpus,
                         remove_punct = TRUE,
@@ -66,9 +67,30 @@ dfm = dfm(tweets_clean)
 ```
 
 ```{r}
-
 topfeatures(dfm)
 ```
+
+# Silly wordclouds
+
+```{r}
+fake_news = df %>%
+  filter(questionable_domain)
+fake_news = quanteda::corpus(fake_news$description) %>% 
+  quanteda::tokens(remove_punct = TRUE, split_hyphens = TRUE) %>% 
+  dfm
+
+textplot_wordcloud(fake_news)
+```
+```{r}
+great_news = df %>%
+  filter(!questionable_domain)
+great_news = quanteda::corpus(great_news$description) %>% 
+  quanteda::tokens(remove_punct = TRUE, split_hyphens = TRUE) %>% 
+  dfm
+
+textplot_wordcloud(great_news, color = 'red')
+```
+
 # Transform tweets into features
 
 ```{r}
@@ -87,28 +109,42 @@ featurizer = function(token, data){
 ```{r}
 df_ex = featurizer('@gop', df) %>% 
   featurizer('biden',.) %>% 
-    featurizer('trump',.) 
+    featurizer('trump',.) # (...)
 
 
 ```
 
-
-# Test - Train split
+## Test - Train split
 
 ```{r}
 index = caret::createDataPartition(df$questionable_domain, p = 0.2, list = F)
 train = df_ex[index,]
 test = df_ex[-index,]
 
+y = test$questionable_domain
+
 modelo = as.formula(y ~ `@gop` + biden + trump)
+ctrl = trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10,
+                           savePredictions = T)
 
-grelha <- expand.grid(mtry = c(1,2,5,10,20,30,40,50))
 
+grelha = expand.grid(mtry = c(1,2,5,10,20,30,40,50))
+
+
+```
+
+## Random Forest
+
+```{r}
 # corremos a simulação
 model_rf = caret::train(modelo,
                      method="rf",
                      data=train,
-                     #trControl=control,
+                     trControl=ctrl,
                      #tuneGrid=grelha,
                      #preProc=c("BoxCox"),
                      ntree=500,
@@ -122,29 +158,50 @@ forest$results
 
 ```
 
+```{r}
+y__rf = predict(model_rf, newdata = test)
+
+```
+
+
 ## SVM
 
 ```{r}
 
+ctrl = trainControl(method="cv", summaryFunction=twoClassSummary, classProbs=T,
+                     savePredictions = T)
+
 model_svm =
 train(modelo,
       data = train,
-      method = "svmLinear")
+      method = "svmLinear",
+      control = ctrl)
 
 model_svm$finalModel
 model_svm$pred
 print(model_svm)
+
+roc = evalm(model_svm)
+
+
+```
+
+## Evaluation
+
+```{r}
+# https://intobioinformatics.wordpress.com/2019/11/26/how-to-easily-make-a-roc-curve-in-r/
+
+notas = evalm(list(model_rf, model_svm), gnames=c('rf','svm'))
+
 ```
 
 
 # PREDICT NEW TWEETS
 
 ```{r}
-# create dummy tweets
-dummy = df[3,]
 
 # pre-processing function
-conversor = function(new){
+conversor = function(new, ml_model){
   temp = quanteda::corpus(new$description)
   tokens = quanteda::tokens(temp,
                         remove_punct = TRUE,
@@ -155,13 +212,20 @@ conversor = function(new){
            biden = ifelse('biden' %in% tokens, 1,0),
            trump = ifelse('trump' %in% tokens, 1,0))
   
-  output = predict(model_svm, newdata = predictable)
+  if(ml_model == 'rf'){
+      output = predict(model_rf, newdata = predictable)
+  }
+  else if(ml_model == 'svm'){
+    output = predict(model_svm, newdata = predictable)
+  }
   
   return(output)
 }
 
+# create dummy tweets
+dummy = df[3,]
 
-conversor(dummy)
+conversor(dummy, 'rf')
 
 ```
 
