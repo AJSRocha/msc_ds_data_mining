@@ -12,6 +12,7 @@ library(tm)
 ##
 library(quanteda)
 library(quanteda.textplots)
+library(quanteda.textstats)
 ##
 library(caret)
 library(MLeval)
@@ -40,12 +41,7 @@ sum(df$title == df$description)
 
 ```{r}
 
-temp = cbind(df, convert(res, to = 'data.frame'))
-summary(temp$trump)
 
-temp %>% ggplot() + 
-  geom_bar(aes(x = questionable_domain, fill = trump != 0)) + 
-  theme_light()
 
 ```
 
@@ -53,7 +49,7 @@ temp %>% ggplot() +
 
 ```{r}
 corpus = quanteda::corpus(df$description)
-tweets_tokens = quanteda::tokens(corpus,
+tweets_tokens = quanteda::tokens(tolower(corpus),
                         remove_punct = TRUE,
                         split_hyphens = TRUE)
 
@@ -68,6 +64,18 @@ dfm = dfm(tweets_clean)
 
 ```{r}
 topfeatures(dfm)
+
+textstat_frequency(tweets_clean, n = 25, groups = df$questionable_domain) %>% 
+  ggplot(aes(x=reorder(feature, frequency),
+           y=frequency, fill=group)) +
+  geom_bar(stat = "identity",
+           position = position_dodge2(width = 0.9, preserve = "single")) +
+  scale_fill_manual(values = c("darkgreen", "red")) +
+  coord_flip() +
+  theme(legend.position = "none") +
+  labs(x=NULL, y = "Frequency") +
+  theme_minimal() + 
+  theme(legend.position = 'left')
 ```
 
 # Silly wordclouds
@@ -109,31 +117,69 @@ featurizer = function(token, data){
 ```{r}
 df_ex = featurizer('@gop', df) %>% 
   featurizer('biden',.) %>% 
-    featurizer('trump',.) # (...)
+    featurizer('trump',.) %>%
+  featurizer('elect',.) %>% 
+  featurizer('@gatewaypundit',.)
+  
 
 
 ```
 
 ## Test - Train split
 
+### Option 1: Blind partition:
+
 ```{r}
 index = caret::createDataPartition(df$questionable_domain, p = 0.2, list = F)
 train = df_ex[index,]
 test = df_ex[-index,]
+```
 
+### Option2: Restructure dataset:
+
+```{r}
+set.seed(123)
+# true tweets:
+index_t = which(df$questionable_domain)
+
+# false tweets:
+index_f = which(!df$questionable_domain) %>% 
+  sample(6000)
+
+index_r = c(index_t,index_t,index_f)
+
+df_ex_r = df_ex[index_r,]
+index = caret::createDataPartition(df_ex_r$questionable_domain, p = 0.2, list = F)
+
+train = df_ex_r[index,]
+test = df_ex_r[-index,]
+```
+
+## Models fit
+
+```{r}
+# common parameters:
 y = test$questionable_domain
 
-modelo = as.formula(y ~ `@gop` + biden + trump)
-ctrl = trainControl(## 10-fold CV
-                           method = "repeatedcv",
-                           number = 10,
-                           ## repeated ten times
-                           repeats = 10,
-                           savePredictions = T)
+modelo = as.formula(y ~ `@gop` + biden + trump + elect + `@gatewaypundit`)
 
+ctrl = trainControl(method = "cv",
+                      number = 10,
+                      savePredictions = T)
 
+# model-specific grid:
 grelha = expand.grid(mtry = c(1,2,5,10,20,30,40,50))
 
+
+```
+
+## Naive Bayes
+
+```{r}
+model_nb = train(modelo,
+                 data = train,
+                 method = "nb",
+                 trControl = ctrl)
 
 ```
 
@@ -158,11 +204,6 @@ forest$results
 
 ```
 
-```{r}
-y__rf = predict(model_rf, newdata = test)
-
-```
-
 
 ## SVM
 
@@ -183,6 +224,10 @@ print(model_svm)
 
 roc = evalm(model_svm)
 
+confusionMatrix(model_svm)
+confusionMatrix(predict(model_svm, newdata = test),
+                factor(test$questionable_domain),
+                mode = 'everything')
 
 ```
 
