@@ -27,24 +27,6 @@ df = read.csv('FN-Dataset-18k//FN-Dataset-18k.csv',encoding = 'UTF-8') %>%
 
 ```
 
-# EDA
-
-```{r}
-df %>% 
-  filter(title != description) %>% 
-  View
-
-sum(df$title == df$description)
-```
-
-# Silly plots
-
-```{r}
-
-
-
-```
-
 # Tokenizing
 
 ```{r}
@@ -61,6 +43,17 @@ tweets_clean = tweets_clean[,order(featnames(tweets_clean))]
 
 dfm = dfm(tweets_clean)
 ```
+
+# EDA
+
+```{r}
+df %>% 
+  filter(title != description) %>% 
+  View
+
+sum(df$title == df$description)
+```
+
 
 ```{r}
 topfeatures(dfm)
@@ -109,7 +102,9 @@ featurizer = function(token, data){
   res = cbind(data, res)
   names(res)[length(names(res))] = token
   return(res)
-  }
+}
+
+featurizer_group
 ```
 
 ## Some tokens:
@@ -161,7 +156,7 @@ test = df_ex_r[-index,]
 # common parameters:
 y = test$questionable_domain
 
-modelo = as.formula(y ~ `@gop` + biden + trump + elect + `@gatewaypundit`)
+modelo = as.formula(factor(y) ~ `@gop` + biden + trump + elect + `@gatewaypundit`)
 
 ctrl = trainControl(method = "cv",
                       number = 10,
@@ -204,14 +199,9 @@ forest$results
 
 ```
 
-
 ## SVM
 
 ```{r}
-
-ctrl = trainControl(method="cv", summaryFunction=twoClassSummary, classProbs=T,
-                     savePredictions = T)
-
 model_svm =
 train(modelo,
       data = train,
@@ -222,7 +212,6 @@ model_svm$finalModel
 model_svm$pred
 print(model_svm)
 
-roc = evalm(model_svm)
 
 confusionMatrix(model_svm)
 confusionMatrix(predict(model_svm, newdata = test),
@@ -230,6 +219,29 @@ confusionMatrix(predict(model_svm, newdata = test),
                 mode = 'everything')
 
 ```
+
+## LDA
+
+```{r}
+model_lda = train(modelo,
+                  data=train,
+                  method="lda",
+                  trControl = ctrl)
+
+model_lda
+```
+
+## QDA - rank deficiency
+
+```{r}
+model_qda = train(modelo,
+                  data=train,
+                  method="qda",
+                  trControl = ctrl)
+
+model_qda
+```
+
 
 ## Evaluation
 
