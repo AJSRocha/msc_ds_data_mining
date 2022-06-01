@@ -42,9 +42,22 @@ tweets_clean = tokens_wordstem(tweets_tokens) %>%
 tweets_clean = tweets_clean[,order(featnames(tweets_clean))]
 
 dfm = dfm(tweets_clean)
+
+# subsets for EDA
+hashtags = dfm_select(tweets_clean, pattern = '#*')
+mention = dfm_select(tweets_clean, pattern = '@*')
+normals = dfm_remove(tweets_clean, pattern = c('#*','@*'))
 ```
 
 # EDA
+
+```{r}
+pesquisa = dfm_select(tweets_clean, pattern = '#gop*')
+pesquisa@Dimnames$features
+```
+
+
+## Initial Features
 
 ```{r}
 df %>% 
@@ -54,9 +67,11 @@ df %>%
 sum(df$title == df$description)
 ```
 
+## Tokens
+
+### Overall:
 
 ```{r}
-topfeatures(dfm)
 
 textstat_frequency(tweets_clean, n = 25, groups = df$questionable_domain) %>% 
   ggplot(aes(x=reorder(feature, frequency),
@@ -65,11 +80,89 @@ textstat_frequency(tweets_clean, n = 25, groups = df$questionable_domain) %>%
            position = position_dodge2(width = 0.9, preserve = "single")) +
   scale_fill_manual(values = c("darkgreen", "red")) +
   coord_flip() +
-  theme(legend.position = "none") +
   labs(x=NULL, y = "Frequency") +
   theme_minimal() + 
-  theme(legend.position = 'left')
+  theme(legend.position = 'none')
 ```
+
+### Hashtags:
+
+```{r}
+textstat_frequency(hashtags, n = 25, groups = df$questionable_domain) %>% 
+  ggplot(aes(x=reorder(feature, frequency),
+           y=frequency, fill=group)) +
+  geom_bar(stat = "identity",
+           position = position_dodge2(width = 0.9, preserve = "single")) +
+  scale_fill_manual(values = c("darkgreen", "red")) +
+  coord_flip() +
+  labs(x=NULL, y = "Frequency") +
+  theme_minimal() + 
+  theme(legend.position = 'none')
+```
+
+### Mentions:
+
+```{r}
+textstat_frequency(mention, n = 25, groups = df$questionable_domain) %>% 
+  ggplot(aes(x=reorder(feature, frequency),
+           y=frequency, fill=group)) +
+  geom_bar(stat = "identity",
+           position = position_dodge2(width = 0.9, preserve = "single")) +
+  scale_fill_manual(values = c("darkgreen", "red")) +
+  coord_flip() +
+  labs(x=NULL, y = "Frequency") +
+  theme_minimal() + 
+  theme(legend.position = 'none')
+```
+
+### Normal words:
+
+* vermelho = TRUE, verde = FALSE;
+
+```{r}
+textstat_frequency(normals, n = 25, groups = df$questionable_domain) %>% 
+  ggplot(aes(x=reorder(feature, frequency),
+           y=frequency, fill=group)) +
+  geom_bar(stat = "identity",
+           position = position_dodge2(width = 0.9, preserve = "single")) +
+  scale_fill_manual(values = c("darkgreen", "red")) +
+  coord_flip() +
+  labs(x=NULL, y = "Frequency") +
+  theme_minimal() + 
+  theme(legend.position = 'none')
+```
+
+### Groups derived
+
+```{r groups}
+hash_t = c('#coronavirus', '#republican', '#bidenharris2020', '#covid', '#trumpvirus',
+           '#trumpisanationaldisgrac', '#gopcorruptionovercountri','#moscowmitch', '#democraci',
+           '#bidenharri', '#debat', '#votebluetosaveamerica')
+
+hash_f = c('#trump2020', '#joebiden', '#stopthest', '#foxnew', '#electionfraud',
+           '#democrat', '#aag2020', '#nytim', '#cnn', '#pennsylvania',
+           '#nevertrump', '#michigan', '#america', '#8217')
+
+mention_t = c('@senategop', '@joebiden', '@senatemajldr', '@housegop',
+              '@yahoo', '@realdonaldtrump<U+2069>', '@gopchairwoman', '@gop<U+2069>',
+              '@cnn', '@goplead', '@speakerpelosi', '@senatedem', '@vp', '@potus',
+              '@whitehous', '@foxnew', '@lindseygrahamsc', '@kamalaharri', '@dnc',
+              '@washingtonpost')
+
+mention_f = c('@gatewaypundit', '@marklevinshow', '@oann', '@realjameswood', '@judgejeanin', '@tomfitton',
+              '@govmikehuckabe', '@walkawayaus', '@patpenn2', '@nfulmer0827', '@msspy007',
+              '@marylene58', '@lady2018cat', '@jessjackie50', '@freelion7', '@foundinnv',
+              '@enemyoftheleft', '@donnawr8', '@briteeyes8', '@bluehandris', '@anthonymentill4',
+              '@easterndmondbk')
+
+norm_t = c('american', 'new', 'republican', 'us', 'just', 'get', 'like', 'go',
+           'covid', 'now', 'lie', 'voter', 'york')
+
+norm_f = c('video', 'joe', 'break', 'fraud', 'ballot', 'georgia',
+           'hunter', 'report', 'michigan', 'show', 'news', 'releas', 'support',
+           'democrat')
+```
+
 
 # Silly wordclouds
 
@@ -78,19 +171,35 @@ fake_news = df %>%
   filter(questionable_domain)
 fake_news = quanteda::corpus(fake_news$description) %>% 
   quanteda::tokens(remove_punct = TRUE, split_hyphens = TRUE) %>% 
-  dfm
+  dfm %>% 
+  dfm_remove(., stopwords("english"))
 
 textplot_wordcloud(fake_news)
 ```
+
 ```{r}
 great_news = df %>%
   filter(!questionable_domain)
 great_news = quanteda::corpus(great_news$description) %>% 
   quanteda::tokens(remove_punct = TRUE, split_hyphens = TRUE) %>% 
-  dfm
+  dfm %>% 
+  dfm_remove(., stopwords("english"))
 
 textplot_wordcloud(great_news, color = 'red')
 ```
+
+```{r}
+textplot_wordcloud(hashtags, color = 'darkgreen')
+```
+
+```{r}
+textplot_wordcloud(mention, color = 'brown')
+```
+
+```{r}
+textplot_wordcloud(normals, color = 'purple')
+```
+
 
 # Transform tweets into features
 
@@ -104,7 +213,18 @@ featurizer = function(token, data){
   return(res)
 }
 
-featurizer_group
+featurizer_group = function(group, group_id, data){
+  # restricts to the desired tokens
+  res = dfm_select(dfm, pattern = group)
+  res = convert(res, to = 'data.frame')
+  # calculates a group score: occurences / total
+  res = rowSums(res[-1]/(length(group)))
+  # attaches and format result:
+  res = cbind(data, res)
+  names(res)[length(names(res))] = group_id
+  return(res)
+}
+
 ```
 
 ## Some tokens:
@@ -114,7 +234,13 @@ df_ex = featurizer('@gop', df) %>%
   featurizer('biden',.) %>% 
     featurizer('trump',.) %>%
   featurizer('elect',.) %>% 
-  featurizer('@gatewaypundit',.)
+  featurizer('@gatewaypundit',.) %>% 
+  featurizer_group(hash_f, 'hash_f',.) %>% 
+  featurizer_group(hash_t, 'hash_t',.) %>% 
+  featurizer_group(mention_t, 'mention_t',.) %>% 
+  featurizer_group(mention_f, 'mention_f',.) %>% 
+  featurizer_group(norm_t, 'norm_t',.) %>% 
+  featurizer_group(norm_f, 'norm_f',.)
   
 
 
@@ -130,7 +256,7 @@ train = df_ex[index,]
 test = df_ex[-index,]
 ```
 
-### Option2: Restructure dataset:
+### Option 2: Restructure dataset:
 
 ```{r}
 set.seed(123)
@@ -146,8 +272,8 @@ index_r = c(index_t,index_t,index_f)
 df_ex_r = df_ex[index_r,]
 index = caret::createDataPartition(df_ex_r$questionable_domain, p = 0.2, list = F)
 
-train = df_ex_r[index,]
-test = df_ex_r[-index,]
+train = df_ex_r[-index,]
+test = df_ex_r[index,]
 ```
 
 ## Models fit
@@ -156,7 +282,12 @@ test = df_ex_r[-index,]
 # common parameters:
 y = test$questionable_domain
 
-modelo = as.formula(factor(y) ~ `@gop` + biden + trump + elect + `@gatewaypundit`)
+# modelo = as.formula(factor(y) ~ factor(user_verified) + factor(contains_profanity))
+
+modelo = as.formula(factor(y) ~ factor(user_verified) + factor(contains_profanity) +
+                      factor(`@gop`) + factor(biden) + factor(trump) + factor(elect) +
+                      factor(`@gatewaypundit`) +
+                      hash_f + hash_t + mention_f + mention_t + norm_f + norm_t)
 
 ctrl = trainControl(method = "cv",
                       number = 10,
@@ -173,9 +304,11 @@ grelha = expand.grid(mtry = c(1,2,5,10,20,30,40,50))
 ```{r}
 model_nb = train(modelo,
                  data = train,
-                 method = "nb",
+                 method = "naive_bayes",
                  trControl = ctrl)
 
+model_nb
+confusionMatrix(model_nb, mode = 'everything')
 ```
 
 ## Random Forest
@@ -188,14 +321,13 @@ model_rf = caret::train(modelo,
                      trControl=ctrl,
                      #tuneGrid=grelha,
                      #preProc=c("BoxCox"),
-                     ntree=500,
-                     metric="Accuracy")
+                     ntree=100)
 
 
 
-print(forest)
-forest$finalModel
-forest$results
+print(model_rf)
+model_rf$finalModel
+model_rf$results
 
 ```
 
@@ -248,14 +380,28 @@ model_qda
 ```{r}
 # https://intobioinformatics.wordpress.com/2019/11/26/how-to-easily-make-a-roc-curve-in-r/
 
-notas = evalm(list(model_rf, model_svm), gnames=c('rf','svm'))
+#notas = evalm(list(model_rf, model_svm), gnames=c('rf','svm'))
 
 ```
 
 
 # PREDICT NEW TWEETS
 
-```{r}
+df_ex = featurizer('@gop', df) %>% 
+  featurizer('biden',.) %>% 
+    featurizer('trump',.) %>%
+  featurizer('elect',.) %>% 
+  featurizer('@gatewaypundit',.) %>% 
+  featurizer_group(hash_f, 'hash_f',.) %>% 
+  featurizer_group(hash_t, 'hash_t',.) %>% 
+  featurizer_group(mention_t, 'mention_t',.) %>% 
+  featurizer_group(mention_f, 'mention_f',.) %>% 
+  featurizer_group(norm_t, 'norm_t',.) %>% 
+  featurizer_group(norm_f, 'norm_f',.)
+  
+
+
+```{r, eval = F}
 
 # pre-processing function
 conversor = function(new, ml_model){
@@ -267,7 +413,10 @@ conversor = function(new, ml_model){
   predictable = new %>% 
     mutate(`@gop` = ifelse('@gop' %in% tokens, 1,0),
            biden = ifelse('biden' %in% tokens, 1,0),
-           trump = ifelse('trump' %in% tokens, 1,0))
+           elect = ifelse('elect' %in% tokens, 1,0),
+           `@gatewaypundit`= ifelse('@gatewaypundit' %in% tokens, 1,0),
+           hash_f = sum())
+  
   
   if(ml_model == 'rf'){
       output = predict(model_rf, newdata = predictable)
