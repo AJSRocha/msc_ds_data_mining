@@ -387,18 +387,9 @@ model_qda
 
 # PREDICT NEW TWEETS
 
-df_ex = featurizer('@gop', df) %>% 
-  featurizer('biden',.) %>% 
-    featurizer('trump',.) %>%
-  featurizer('elect',.) %>% 
-  featurizer('@gatewaypundit',.) %>% 
-  featurizer_group(hash_f, 'hash_f',.) %>% 
-  featurizer_group(hash_t, 'hash_t',.) %>% 
-  featurizer_group(mention_t, 'mention_t',.) %>% 
-  featurizer_group(mention_f, 'mention_f',.) %>% 
-  featurizer_group(norm_t, 'norm_t',.) %>% 
-  featurizer_group(norm_f, 'norm_f',.)
-  
+tokens_wordstem(tweets_tokens) %>%
+  dfm(., tolower = TRUE) %>% 
+  dfm_remove(., stopwords("english"))
 
 
 ```{r, eval = F}
@@ -408,14 +399,26 @@ conversor = function(new, ml_model){
   temp = quanteda::corpus(new$description)
   tokens = quanteda::tokens(temp,
                         remove_punct = TRUE,
-                        split_hyphens = TRUE)
+                        split_hyphens = TRUE) %>% 
+    tokens_wordstem(.) %>%
+  dfm(., tolower = TRUE) %>% 
+  dfm_remove(., stopwords("english")) %>% 
+    colnames
+  
   # builds output
   predictable = new %>% 
     mutate(`@gop` = ifelse('@gop' %in% tokens, 1,0),
            biden = ifelse('biden' %in% tokens, 1,0),
            elect = ifelse('elect' %in% tokens, 1,0),
+           trump = ifelse('trump' %in% tokens, 1,0),
            `@gatewaypundit`= ifelse('@gatewaypundit' %in% tokens, 1,0),
-           hash_f = sum())
+           # now for grouped features
+           hash_f = sum(tokens %in% hash_f) / length(hash_f),
+           hash_t = sum(tokens %in% hash_t) / length(hash_t),
+           mention_f = sum(tokens %in% mention_f) / length(mention_f),
+           mention_t = sum(tokens %in% mention_t) / length(mention_t),
+           norm_f = sum(tokens %in% norm_f) / length(norm_f),
+           norm_t = sum(tokens %in% norm_t) / length(norm_t))
   
   
   if(ml_model == 'rf'){
@@ -429,9 +432,7 @@ conversor = function(new, ml_model){
 }
 
 # create dummy tweets
-dummy = df[3,]
-
-conversor(dummy, 'rf')
+conversor(df[69,], 'rf')
 
 ```
 
