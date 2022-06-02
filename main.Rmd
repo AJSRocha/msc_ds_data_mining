@@ -16,6 +16,7 @@ library(quanteda.textstats)
 ##
 library(caret)
 library(MLeval)
+library(pROC)
 ```
 
 ```{r data_import}
@@ -250,7 +251,7 @@ df_ex = featurizer('@gop', df) %>%
 
 ### Option 1: Blind partition:
 
-```{r}
+```{r, eval = T}
 index = caret::createDataPartition(df$questionable_domain, p = 0.2, list = F)
 train = df_ex[index,]
 test = df_ex[-index,]
@@ -258,7 +259,7 @@ test = df_ex[-index,]
 
 ### Option 2: Restructure dataset:
 
-```{r}
+```{r, eval = F}
 set.seed(123)
 # true tweets:
 index_t = which(df$questionable_domain)
@@ -293,6 +294,11 @@ ctrl = trainControl(method = "cv",
                       number = 10,
                       savePredictions = T)
 
+ctrl_svm = trainControl(method = "cv",
+                      number = 10,
+                      savePredictions = T,
+                    classProbs = T)
+
 # model-specific grid:
 grelha = expand.grid(mtry = c(1,2,5,10,20,30,40,50))
 
@@ -309,6 +315,8 @@ model_nb = train(modelo,
 
 model_nb
 confusionMatrix(model_nb, mode = 'everything')
+model_nb$pred
+
 ```
 
 ## Random Forest
@@ -338,7 +346,7 @@ model_svm =
 train(modelo,
       data = train,
       method = "svmLinear",
-      control = ctrl)
+      control = ctrl_svm)
 
 model_svm$finalModel
 model_svm$pred
@@ -378,11 +386,31 @@ model_qda
 ## Evaluation
 
 ```{r}
-# https://intobioinformatics.wordpress.com/2019/11/26/how-to-easily-make-a-roc-curve-in-r/
+pred_rf = predict(model_rf, newdata = test, type = 'prob')
+pred_nb = predict(model_nb, newdata = test, type = 'prob')
+pred_svm = predict(model_svm, newdata = test, type = 'prob')
+pred_lda = predict(model_lda, newdata = test, type = 'prob')
+pred_qda = predict(model_qda, newdata = test, type = 'prob')
 
-#notas = evalm(list(model_rf, model_svm), gnames=c('rf','svm'))
+roc_score_rf = roc(test$questionable_domain, pred_rf[,1]) #AUC score
+roc_score_nb = roc(test$questionable_domain, pred_nb[,1]) #AUC score
+roc_score_svm = roc(test$questionable_domain, pred_svm[,1]) #AUC score
+roc_score_lda = roc(test$questionable_domain, pred_lda[,1]) #AUC score
+roc_score_qda = roc(test$questionable_domain, pred_qda[,1]) #AUC score
 
+plot(roc_score ,main ="ROC curve -- naive Bayes ")
+plot(roc_score ,main ="ROC curve -- naive Bayes ", color = 'red', add = T)
 ```
+
+```{r}
+plot.roc(roc_score_rf)
+plot.roc(roc_score_rf, col = 'red', add = T)
+plot.roc(roc_score_nb, col = 'red', add = T)
+plot.roc(roc_score_lda, col = 'darkgreen', add = T)
+plot.roc(roc_score_qda, col = 'darkblue', add = T)
+legend(1.4,1, legend = c('rf', 'nb', 'lda', 'qda'), col = c('black', 'red', 'darkgreen', 'darkblue'),  lty=1:1, cex=0.8)
+```
+
 
 
 # PREDICT NEW TWEETS
